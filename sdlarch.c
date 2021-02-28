@@ -556,6 +556,20 @@ static size_t audio_write(const int16_t *buf, unsigned frames) {
 }
 
 
+
+static retro_time_t perf_get_time_usec() {
+    struct timespec curtime;
+    if( clock_gettime( CLOCK_REALTIME, &curtime) == -1 ) {
+        perror( "clock gettime" );
+        abort();
+    }
+    return (retro_time_t)curtime.tv_nsec / 1000;
+}
+
+retro_perf_tick_t perf_get_counter_t(void) {
+    return __rdtsc();
+}
+
 static void core_log(enum retro_log_level level, const char *fmt, ...) {
 	char buffer[4096] = {0};
 	static const char * levelstr[] = { "dbg", "inf", "wrn", "err" };
@@ -571,8 +585,9 @@ static void core_log(enum retro_log_level level, const char *fmt, ...) {
 	fprintf(stderr, "[%s] %s", levelstr[level], buffer);
 	fflush(stderr);
 
-	if (level == RETRO_LOG_ERROR)
-		exit(EXIT_FAILURE);
+	if (level == RETRO_LOG_ERROR) {
+		assert(false);
+    }
 }
 
 static uintptr_t core_get_current_framebuffer() {
@@ -706,6 +721,10 @@ static bool core_environment(unsigned cmd, void *data) {
         *value = 1 << 0 | 1 << 1;
         return true;
     }
+    case RETRO_ENVIRONMENT_GET_PERF_INTERFACE: {
+        *(struct retro_perf_callback*)data = g_retro.perf_cb;
+        return true;
+    }
 	default:
 		core_log(RETRO_LOG_DEBUG, "Unhandled env #%u", cmd);
 		return false;
@@ -719,6 +738,35 @@ static void core_video_refresh(const void *data, unsigned width, unsigned height
     video_refresh(data, width, height, pitch);
 }
 
+int Keycode_SDL_to_Retro(int sdl_code) {
+    switch(sdl_code) {
+       case SDL_SCANCODE_UP      : return RETROK_UP         ;
+       case SDL_SCANCODE_DOWN    : return RETROK_DOWN       ;
+       case SDL_SCANCODE_RIGHT   : return RETROK_RIGHT      ;
+       case SDL_SCANCODE_LEFT    : return RETROK_LEFT       ;
+       case SDL_SCANCODE_INSERT  : return RETROK_INSERT     ;
+       case SDL_SCANCODE_HOME    : return RETROK_HOME       ;
+       case SDL_SCANCODE_END     : return RETROK_END        ;
+       case SDL_SCANCODE_PAGEUP  : return RETROK_PAGEUP     ;
+       case SDL_SCANCODE_PAGEDOWN: return RETROK_PAGEDOWN   ;
+    }
+
+    return 0;
+}
+
+int Keycode_Retro_to_SDL(int retro_code) {
+    switch(retro_code) {
+       case RETROK_UP      : return SDL_SCANCODE_UP         ;
+       case RETROK_DOWN    : return SDL_SCANCODE_DOWN       ;
+       case RETROK_RIGHT   : return SDL_SCANCODE_RIGHT      ;
+       case RETROK_LEFT    : return SDL_SCANCODE_LEFT       ;
+       case RETROK_INSERT  : return SDL_SCANCODE_INSERT     ;
+       case RETROK_HOME    : return SDL_SCANCODE_HOME       ;
+       case RETROK_END     : return SDL_SCANCODE_END        ;
+       case RETROK_PAGEUP  : return SDL_SCANCODE_PAGEUP     ;
+       case RETROK_PAGEDOWN: return SDL_SCANCODE_PAGEDOWN   ;
+    }
+}
 
 static void core_input_poll(void) {
 	int i;
@@ -733,6 +781,10 @@ static void core_input_poll(void) {
 
 
 static int16_t core_input_state(unsigned port, unsigned device, unsigned index, unsigned id) {
+    if (device == RETRO_DEVICE_KEYBOARD) {
+        return g_kbd[Keycode_Retro_to_SDL(id)];
+    }
+
 	if (port || index || device != RETRO_DEVICE_JOYPAD)
 		return 0;
 
@@ -759,6 +811,9 @@ static void core_load(const char *sofile) {
 	void (*set_audio_sample)(retro_audio_sample_t) = NULL;
 	void (*set_audio_sample_batch)(retro_audio_sample_batch_t) = NULL;
 	memset(&g_retro, 0, sizeof(g_retro));
+
+    g_retro.perf_cb.get_time_usec = perf_get_time_usec;
+
     g_retro.handle = SDL_LoadObject(sofile);
 
 	if (!g_retro.handle)
