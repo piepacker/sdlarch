@@ -94,6 +94,8 @@ static struct {
 //	unsigned retro_get_region(void);
 //	void *retro_get_memory_data(unsigned id);
 //	size_t retro_get_memory_size(unsigned id);
+
+    struct retro_perf_callback perf_cb;
 } g_retro;
 
 
@@ -139,7 +141,8 @@ static void die(const char *fmt, ...) {
 	fputc('\n', stderr);
 	fflush(stderr);
 
-	exit(EXIT_FAILURE);
+    abort();
+	//exit(EXIT_FAILURE);
 }
 
 static GLuint compile_shader(unsigned type, unsigned count, const char **strings) {
